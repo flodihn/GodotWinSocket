@@ -1,5 +1,31 @@
-// Because using InetPton requires converting to PCWR string which seem impossible.
-#define _WINSOCK_DEPRECATED_NO_WARNINGS
+/*************************************************************************/
+/*  WinSocket.cpp  		                                                 */
+/*************************************************************************/
+/*                       This file is part of:                           */
+/*                       GODOT WINSOCK PLUGIN                            */
+/*             https://github.com/flodihn/GodotWinSocket                 */
+/*************************************************************************/
+/* Copyright (c) 2021 Christian Flodihn.				                 */
+/*                                                                       */
+/* Permission is hereby granted, free of charge, to any person obtaining */
+/* a copy of this software and associated documentation files (the       */
+/* "Software"), to deal in the Software without restriction, including   */
+/* without limitation the rights to use, copy, modify, merge, publish,   */
+/* distribute, sublicense, and/or sell copies of the Software, and to    */
+/* permit persons to whom the Software is furnished to do so, subject to */
+/* the following conditions:                                             */
+/*                                                                       */
+/* The above copyright notice and this permission notice shall be        */
+/* included in all copies or substantial portions of the Software.       */
+/*                                                                       */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
+/*************************************************************************/
 
 #include <iostream>
 #include <cstdarg>
@@ -14,81 +40,152 @@
 #define RECEIVE_FLAGS 0
 #define SEND_FLAGS 0
 
+/*************************************************************************/
+/* WinSocket exposes a low level socket implementation based on winsock2.*/
+/* It provides functions to connect to a host and port, receive and send */
+/* data.																 */
+/*																		 */
+/* Data can be received by either calling receive or receive_message.	 */
+/*																		 */
+/* receive is the most simple method, requires the user to provide a	 */
+/* StreamPeerBuffer, a starting index where to start writing data into	 */
+/* the buffer and the number of bytes to receive. Before using this		 */
+/* method, the set_receive_buffer method must be called with a size		 */
+/* big enough to receive whatever message is expected to be received.	 */
+/*																		 */
+/* receive_message provides a bit more convenience, but requires to		 */
+/* set_message_header_size must be called to set a header of either		 */
+/* 2 or 4 bytes. When receiving the message, the first amount of bytes	 */
+/* is expected to contain the size of the message in bytes.				 */
+/*																		 */
+/* After connecting to a server by calling connect_to_host, the socket 	 */
+/* can be set in either blocking(default) or non blocking mode.			 */
+/* In blocking mode, the WinSock class will block until the data all 	 */
+/* data has been received, probably causing whole Godot to freeze.	  	 */
+/* In non blocking mode, the receive and receive_message will always 	 */
+/* immediately, but might return that 0 bytes was received, then it is	 */
+/* up to the user to call the method until a message size, a value 		 */
+/* larger than 0 is returned.											 */
+/*																		 */
+/* Future improvements, for each message a new buffer is created on the	 */
+/* heap by calling malloc. It would probably be more efficient by giving */
+/* the option to set and use a constant buffer. 						 */
+/* Also, a platform independent alternative of the plugin by using boost */
+/* would be a good idea.												 */
+/*************************************************************************/
 void WinSocket::_register_methods()
 {
-	//register_method("_process", &WinSocket::_process);
 	godot::register_method("_init", &WinSocket::_init);
+
+	godot::register_method("winsock_init", &WinSocket::winsock_init);
+	godot::register_method("winsock_cleanup", &WinSocket::winsock_cleanup);
+
 	godot::register_method("connect_to_host", &WinSocket::connect_to_host);
+	godot::register_method("disconnect", &WinSocket::disconnect);
+
 	godot::register_method("set_message_header_size", &WinSocket::set_message_header_size);
 	godot::register_method("set_message_buffer", &WinSocket::set_message_buffer);
+	godot::register_method("set_blocking", &WinSocket::set_blocking);
+	godot::register_method("set_receive_buffer", &WinSocket::set_receive_buffer);
+	godot::register_method("set_debug", &WinSocket::set_debug);
 
-	godot::register_method("blocking_receive_message", &WinSocket::blocking_receive_message);
+	godot::register_method("receive_message", &WinSocket::receive_message);
+	godot::register_method("receive", &WinSocket::receive);
+	
+	godot::register_method("ntohs", &WinSocket::ntohs);
+	godot::register_method("htonl", &WinSocket::htonl);
 	
 	godot::register_property<WinSocket, bool>("debug", &WinSocket::debug, false);
 }
 
 void WinSocket::_init()
 {
-	printf("=== WinSock Initializing ===\n");
-	int error = init_winsocket();
+}
+
+int WinSocket::winsock_init()
+{
+	debug_print("WinSock._init: Initializing winsock2...\n");
+	WSADATA wsaData;
+	WORD versionRequested = MAKEWORD(2, 2);
+
+	int error = WSAStartup(versionRequested, &wsaData);
 	winSocket = INVALID_SOCKET;
 
 	if (error > 0)
 	{
-		printf("Failed to initialize Winsock2.\n");
-		return;
+		debug_print("WinSock._init: Failed to initialize winsock2.\n");
+		return error;
 	}
 
-	printf("Successfully initialized Winsock2.\n");
+	debug_print("WinSock._init: Successfully initialized winsock2.\n");
+	wsaInitialized = true;
+	return 0;
 }
 
-void WinSocket::_process(float delta)
+void WinSocket::winsock_cleanup()
 {
+	WSACleanup();
 }
 
-void WinSocket::connect_to_host(godot::String hostName, int port)
+int WinSocket::connect_to_host(godot::String hostName, int port)
 {
 	struct sockaddr_in serverAddr;
 	struct hostent* he;
 
 	if ((winSocket = socket(AF_INET, SOCK_STREAM, 0)) == INVALID_SOCKET)
 	{
-		printf("Could not create socket : %d", WSAGetLastError());
+		int wsaError = WSAGetLastError();
+		char errorMessage[64];
+		sprintf(errorMessage, "WinSocket.connect_to_host: Could not create socket: %d!\n", wsaError);
+		debug_print(errorMessage);
 	}
 
 	if ((he = gethostbyname((const char*) hostName.ascii().get_data())) == NULL)
 	{
-		//gethostbyname failed
-		printf("gethostbyname failed : %d", WSAGetLastError());
-		return;
+		int wsaError = WSAGetLastError();
+		return wsaError;
 	}
 
-	//Cast the h_addr_list to in_addr , since h_addr_list also has the ip address in long format only
 	struct in_addr** addr_list;
 	addr_list = (struct in_addr**)he->h_addr_list;
 	char ip[255];
 
 	for (int i = 0; addr_list[i] != NULL; i++)
 	{
-		//Return the first one;
 		strcpy(ip, inet_ntoa(*addr_list[i]));
 	}
-
-	printf("%s resolved to : %s\n", hostName, ip);
 
 	serverAddr.sin_addr.s_addr = inet_addr(ip);
 	serverAddr.sin_family = AF_INET;
 	serverAddr.sin_port = htons(port);
 
-	//Connect to remote server
-	int connectError = ::connect(winSocket, (struct sockaddr*)&serverAddr, sizeof(serverAddr));
+	int connectError = ::connect(winSocket, (struct sockaddr*) &serverAddr, sizeof(serverAddr));
 
 	if (connectError < 0)
 	{
-		printf("Socket connect failed with error: %ld\n", WSAGetLastError());
+		int wsaError = WSAGetLastError();
+		char errorMessage[64];
+		sprintf(errorMessage, "WinSocket.connect_to_host: Socket connect failed with error: %d!\n", wsaError);
+		debug_print(errorMessage);
+		return wsaError;
 	}
 
-	printf("Socket successfully connected to: %s %d.\n", ip, port);
+	char successMessage[64];
+	sprintf(successMessage, "WinSocket.connect_to_host: Socket successfully connected to: %s:%d.\n", ip, port);
+	debug_print(successMessage);
+	return 0;
+}
+
+void WinSocket::disconnect()
+{
+	int result = shutdown(winSocket, SD_SEND);
+	if (result == SOCKET_ERROR) {
+		int wsaError = WSAGetLastError();
+		char errorMessage[64];
+		sprintf(errorMessage, "WinSocket.disconnect: Clean shutdown failed, forcing disconnect: %d!\n", wsaError);
+		debug_print(errorMessage);
+	}
+	closesocket(winSocket);
 }
 
 void WinSocket::set_blocking(bool blocking)
@@ -117,7 +214,7 @@ void WinSocket::set_blocking(bool blocking)
 void WinSocket::set_message_header_size(int size)
 {
 	if (!(size == 2 || size == 4)) {
-		godot::Godot::print("set_header error: Size must be 2 or 4 bytes.\n");
+		debug_print("WinSocket.set_header error: Size must be 2 or 4 bytes.\n");
 		return;
 	}
 
@@ -132,30 +229,32 @@ void WinSocket::set_message_header_size(int size)
 	}
 }
 
-void WinSocket::set_message_buffer(godot::Ref<godot::StreamPeerBuffer> messageBuffer)
+void WinSocket::set_message_buffer(godot::Ref<godot::StreamPeerBuffer> messageBufferRef)
 {
-	this->messageBuffer = messageBuffer.ptr();
+	messageBuffer = messageBufferRef.ptr();
+}
+
+void WinSocket::set_receive_buffer(unsigned size)
+{
+	if(receiveBuffer != NULL) {
+		::free(receiveBuffer);
+	}
+
+	receiveBuffer = (byte*) malloc(size);
+}
+
+void WinSocket::set_debug(bool debug)
+{
+	this->debug = debug;
 }
 
 void WinSocket::debug_print(const char* output)
 {
 	if (!debug) return;
-
-	//Godot::print(output);
-	printf(output);
+	godot::Godot::print(output);
 }
 
-int WinSocket::init_winsocket()
-{
-	WSADATA wsaData;
-	WORD versionRequested = MAKEWORD(2, 2);
-
-	int error = WSAStartup(versionRequested, &wsaData);
-
-	return error;
-}
-
-int WinSocket::non_blocking_receive_message()
+int WinSocket::receive_message()
 {
 	if (headerSize == 0) {
 		return 0;
@@ -166,82 +265,102 @@ int WinSocket::non_blocking_receive_message()
 		bytesLeft = headerSize;
 	}
 
-	if (headerBufferIndex < headerSize) {
-		// if we just call receieve, when we do not need two seperate methods for blocking/non-blockign receive message.
-		int numBytesReceived = 0;
-
-		if (headerSize == 2) {
-			numBytesReceived = non_blocking_receive((byte*) &shortHeader, &headerBufferIndex, bytesLeft);
-		}
-		else if (headerSize == 4)
-		{
-			numBytesReceived = non_blocking_receive((byte*) &intHeader, &headerBufferIndex, bytesLeft);
+	if(isBlocking)
+	{
+		blocking_receive_header();
+		return blocking_receive_message();
+	} else {
+		if (headerBufferIndex < headerSize) {
+			non_blocking_receive_header();
 		}
 
-		bytesLeft -= numBytesReceived;
-
-		if (headerBufferIndex == headerSize)
-		{
-			if (headerSize == 2) {
-				bytesLeft = ntohs(shortHeader);
-			} else if(headerSize == 4) {
-				bytesLeft = htonl(intHeader);
-			}
-		}
+		return non_blocking_receive_message();
 	}
-	else {
-		/*
-		int numBytesReceived = non_blocking_receive(dataBuffer, &messageBufferIndex, bytesLeft);
-		bytesLeft -= numBytesReceived;
-
-		if (bytesLeft == 0) {
-			int messageSize = messageBufferIndex;
-			headerBufferIndex = 0;
-			messageBufferIndex = 0;
-			return messageSize;
-		}
-		*/
-	}
-
-	return 0;
 }
 
-void WinSocket::blocking_receive_message()
+void WinSocket::blocking_receive_header()
 {
-	int messageSize = 0;
-
 	if (headerSize == 2)
 	{
 		blocking_receive((byte*) &headerBuffer, sizeof(UINT16));
-		messageSize = ntohs((UINT16) headerBuffer);
-		printf("Received header containg message size: %d.\n", messageSize);
+		bytesLeft = ntohs((UINT16) headerBuffer);
 	}
 	else if (headerSize == 4)
 	{
 		blocking_receive((byte*) &headerBuffer, sizeof(UINT32));
-		messageSize = (UINT32) headerBuffer;
+		bytesLeft = (UINT32) headerBuffer;
 	}
-	else {
-		// Return error code, receive message when header size not set is invalid behaviour.
-	}
-
-	messageBuffer->seek(0);
-	godot::PoolByteArray* poolByteArray = &messageBuffer->get_data_array();
-	byte* tmpBuffer = (byte*) malloc(messageSize);
-	blocking_receive(tmpBuffer, messageSize);
-	for (int i = 0; i < messageSize; i++) {
-		poolByteArray->set(i, tmpBuffer[i]);
-	}
-	::free(tmpBuffer);
 }
 
-void WinSocket::blocking_receive(byte* buffer, int numBytes)
+int WinSocket::blocking_receive_message()
+{
+	byte* tmpBuffer = (byte*) malloc(bytesLeft);
+	int numBytesReceived = blocking_receive(tmpBuffer, bytesLeft);
+	fill_message_buffer(tmpBuffer, bytesLeft);
+	::free(tmpBuffer);
+	return numBytesReceived;
+}
+
+int WinSocket::blocking_receive(byte* buffer, int numBytes)
 {
 	int bytesLeft = numBytes;
 	while (bytesLeft > 0) {
 		int numBytesReceived = recv(winSocket, (char*)buffer, bytesLeft, RECEIVE_FLAGS);
 		bytesLeft -= numBytesReceived;
 	}
+
+	return numBytes;
+}
+
+void WinSocket::non_blocking_receive_header()
+{
+	int numBytesReceived = 0;
+
+	if (headerSize == 2) {
+		numBytesReceived = non_blocking_receive((byte*) &shortHeader, &headerBufferIndex, bytesLeft);
+	}
+	else if (headerSize == 4)
+	{
+		numBytesReceived = non_blocking_receive((byte*) &intHeader, &headerBufferIndex, bytesLeft);
+	}
+
+	bytesLeft -= numBytesReceived;
+
+	if (headerBufferIndex == headerSize)
+	{
+		if (headerSize == 2) {
+			bytesLeft = ntohs(shortHeader);
+		} else if(headerSize == 4) {
+			bytesLeft = htonl(intHeader);
+		}
+
+		if(tmpMessageBuffer != NULL) {
+			::free(tmpMessageBuffer);
+		}
+
+		if(bytesLeft > 0) {
+			tmpMessageBuffer = (byte*) malloc(bytesLeft);
+		}
+	}
+}
+
+int WinSocket::non_blocking_receive_message()
+{
+	int numBytesReceived = non_blocking_receive(tmpMessageBuffer, &messageBufferIndex, bytesLeft);
+	bytesLeft -= numBytesReceived;
+
+	if (bytesLeft == 0) {
+		int messageSize = messageBufferIndex;
+		headerBufferIndex = 0;
+		messageBufferIndex = 0;
+
+		fill_message_buffer(tmpMessageBuffer, messageSize);
+		::free(tmpMessageBuffer);
+		tmpMessageBuffer = NULL;
+		return messageSize;
+	}
+
+	return 0;
 }
 
 int WinSocket::non_blocking_receive(byte* buffer, unsigned int* bufferIndex, int numBytes)
@@ -257,6 +376,49 @@ int WinSocket::non_blocking_receive(byte* buffer, unsigned int* bufferIndex, int
 		*bufferIndex += numBytesReceived;
 		return numBytesReceived;
 	}
+
+	return 0;
+}
+
+void WinSocket::fill_message_buffer(byte* sourceBuffer, int numBytes)
+{
+	messageBuffer->seek(0);
+	godot::PoolByteArray* poolByteArray = &messageBuffer->get_data_array();
+	for (int i = 0; i < numBytes; i++) {
+		poolByteArray->set(i, sourceBuffer[i]);
+	}
+}
+
+int WinSocket::receive(godot::Ref<godot::StreamPeerBuffer> streamPeerBufferRef, unsigned bufferIndex, unsigned int numBytes)
+{
+	godot::StreamPeerBuffer* streamPeerBuffer = streamPeerBufferRef.ptr();
+	godot::PoolByteArray* poolByteArray = &streamPeerBuffer->get_data_array();
+
+	int numBytesReceived = recv(winSocket, (char*) receiveBuffer, numBytes, RECEIVE_FLAGS);
+	if (numBytesReceived == SOCKET_ERROR) {
+		int wsaError = WSAGetLastError();
+
+		if(isBlocking && wsaError == WSAEWOULDBLOCK) {
+			return 0;
+		}
+
+		char errorMessage[32];
+		sprintf(errorMessage, "WinSocket.receive: WSA error: %d!\n", wsaError);
+		godot::Godot::print(errorMessage);
+		return SOCKET_ERROR;
+	}
+
+	if(numBytesReceived > 0) {
+		for (int i = 0; i < numBytesReceived; i++) {
+			poolByteArray->set(i + bufferIndex, receiveBuffer[i]);
+		}
+	}
+
+	char errorMessage[64];
+	sprintf(errorMessage, "WinSocket.receive: Successfully received: %d bytes.\n", numBytesReceived);
+	godot::Godot::print(errorMessage);
+
+	return numBytesReceived;
 }
 
 void WinSocket::send_message(const char* message)
@@ -278,6 +440,17 @@ void WinSocket::send_message(const char* message)
 		send(winSocket, message, sizeof(message), SEND_FLAGS);
 	}
 }
+
+short WinSocket::ntohs(short var)
+{
+	return(::ntohs(var));
+}
+
+int WinSocket::htonl(int var)
+{
+	return(::htonl(var));
+}
+
 
 void debug_print(const char* output, int debugMode)
 {
