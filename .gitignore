@@ -1,0 +1,6 @@
+*.exp
+*.ilk
+*.pdg
+*.idb
+*.vscode
+.sconsign.dblite

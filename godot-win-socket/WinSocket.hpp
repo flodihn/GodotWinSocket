@@ -39,10 +39,6 @@
 
 #include <winsock2.h>
 
-#define WIN_SOCKET_DEBUG_MODE_NONE 0
-#define WIN_SOCKET_DEBUG_MODE_GODOT 1
-#define WIN_SOCKET_DEBUG_MODE_STDOUT 2
-
 #define WIN_SOCKET_DEFAULT_BUFFER_SIZE 16384
 
 class WinSocket : public godot::Node {
@@ -89,7 +85,7 @@ public:
 	
 	int winsock_init();
 	void winsock_cleanup();
-
+	
 	int connect_to_host(godot::String hostName, int port);
 	void disconnect();
 	void set_message_header_size(int size);

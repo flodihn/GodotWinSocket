@@ -65,7 +65,7 @@ func _ready():
     win_socket.set_debug(false)
     win_socket.winsock_init()
     var connectResult = win_socket.connect_to_host("localhost", 2000)
-    win_socket.set_blocking(true)
+    win_socket.set_blocking(false)
     
     if connectResult > 0:
         print("Connection error: ", connectResult)

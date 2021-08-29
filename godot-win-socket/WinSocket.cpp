@@ -40,39 +40,45 @@
 #define RECEIVE_FLAGS 0
 #define SEND_FLAGS 0
 
-/*************************************************************************/
-/* WinSocket exposes a low level socket implementation based on winsock2.*/
-/* It provides functions to connect to a host and port, receive and send */
-/* data.																 */
-/*																		 */
-/* Data can be received by either calling receive or receive_message.	 */
-/*																		 */
-/* receive is the most simple method, requires the user to provide a	 */
-/* StreamPeerBuffer, a starting index where to start writing data into	 */
-/* the buffer and the number of bytes to receive. Before using this		 */
-/* method, the set_receive_buffer method must be called with a size		 */
-/* big enough to receive whatever message is expected to be received.	 */
-/*																		 */
-/* receive_message provides a bit more convenience, but requires to		 */
-/* set_message_header_size must be called to set a header of either		 */
-/* 2 or 4 bytes. When receiving the message, the first amount of bytes	 */
-/* is expected to contain the size of the message in bytes.				 */
-/*																		 */
-/* After connecting to a server by calling connect_to_host, the socket 	 */
-/* can be set in either blocking(default) or non blocking mode.			 */
-/* In blocking mode, the WinSock class will block until the data all 	 */
-/* data has been received, probably causing whole Godot to freeze.	  	 */
-/* In non blocking mode, the receive and receive_message will always 	 */
-/* immediately, but might return that 0 bytes was received, then it is	 */
-/* up to the user to call the method until a message size, a value 		 */
-/* larger than 0 is returned.											 */
-/*																		 */
-/* Future improvements, for each message a new buffer is created on the	 */
-/* heap by calling malloc. It would probably be more efficient by giving */
-/* the option to set and use a constant buffer. 						 */
-/* Also, a platform independent alternative of the plugin by using boost */
-/* would be a good idea.												 */
-/*************************************************************************/
+/*
+ * WinSocket exposes a low level socket implementation based on winsock2.
+ * It provides functions to connect to a host and port, receive and send 
+ * data.
+
+ * Data can be received by either calling receive or receive_message.
+
+ * receive is the most simple method, requires the user to provide a
+ * StreamPeerBuffer, a starting index where to start writing data into
+ * the buffer and the number of bytes to receive. Before using this
+ * method, the set_receive_buffer method must be called with a size
+ * big enough to receive whatever message is expected to be received.
+
+ * receive_message provides a bit more convenience, but requires to
+ * set_message_header_size and set_message_buffer must and be called 
+ * before the receive_message function.
+ * set_header_size must provide a size of either 2 or 4 bytes.
+ * When receiving the message, the first amount of bytes is expected 
+ * to contain the size of the message in bytes.
+ * set_message_buffer expects the user to provide a StreamPeerBuffer
+ * which will be used to write the received packet.
+
+ * After connecting to a server by calling connect_to_host, the socket
+ * can be set in either blocking(default) or non blocking mode.
+ * In blocking mode, the WinSock class will block until the data all
+ * data has been received, probably causing whole Godot to freeze.
+ * In non blocking mode, the receive and receive_message will always
+ * immediately, but might return that 0 bytes was received, then it is
+ * up to the user to call the method until a message size, a value
+ * larger than 0 is returned.
+
+ * Future improvements:
+ * For every message a new buffer is created on the	heap by calling 
+ * malloc. It would probably be more efficient by giving the option to 
+ * set and use a constant buffer.
+ * Also, a platform independent alternative of the plugin by using boost
+ * or maybe SDL would be a good idea.
+ * Use varargs for debug_print method.
+ */
 void WinSocket::_register_methods()
 {
 	godot::register_method("_init", &WinSocket::_init);
@@ -104,7 +110,7 @@ void WinSocket::_init()
 
 int WinSocket::winsock_init()
 {
-	debug_print("WinSock._init: Initializing winsock2...\n");
+	debug_print("WinSock.winsock_init: Initializing winsock2...\n");
 	WSADATA wsaData;
 	WORD versionRequested = MAKEWORD(2, 2);
 
@@ -113,11 +119,11 @@ int WinSocket::winsock_init()
 
 	if (error > 0)
 	{
-		debug_print("WinSock._init: Failed to initialize winsock2.\n");
+		debug_print("WinSock.winsock_init: Failed to initialize winsock2.\n");
 		return error;
 	}
 
-	debug_print("WinSock._init: Successfully initialized winsock2.\n");
+	debug_print("WinSock.winsock_init: Successfully initialized winsock2.\n");
 	wsaInitialized = true;
 	return 0;
 }
@@ -191,7 +197,6 @@ void WinSocket::disconnect()
 void WinSocket::set_blocking(bool blocking)
 {
 	if (winSocket == INVALID_SOCKET) {
-		// return error code;
 		return;
 	}
 
@@ -391,6 +396,11 @@ void WinSocket::fill_message_buffer(byte* sourceBuffer, int numBytes)
 
 int WinSocket::receive(godot::Ref<godot::StreamPeerBuffer> streamPeerBufferRef, unsigned bufferIndex, unsigned int numBytes)
 {
+	if(receiveBuffer == NULL)
+	{
+		receiveBuffer = (byte*) malloc(WIN_SOCKET_DEFAULT_BUFFER_SIZE);
+	}
+
 	godot::StreamPeerBuffer* streamPeerBuffer = streamPeerBufferRef.ptr();
 	godot::PoolByteArray* poolByteArray = &streamPeerBuffer->get_data_array();
 
@@ -404,7 +414,7 @@ int WinSocket::receive(godot::Ref<godot::StreamPeerBuffer> streamPeerBufferRef, 
 
 		char errorMessage[32];
 		sprintf(errorMessage, "WinSocket.receive: WSA error: %d!\n", wsaError);
-		godot::Godot::print(errorMessage);
+		debug_print(errorMessage);
 		return SOCKET_ERROR;
 	}
 
@@ -416,7 +426,7 @@ int WinSocket::receive(godot::Ref<godot::StreamPeerBuffer> streamPeerBufferRef, 
 
 	char errorMessage[64];
 	sprintf(errorMessage, "WinSocket.receive: Successfully received: %d bytes.\n", numBytesReceived);
-	godot::Godot::print(errorMessage);
+	debug_print(errorMessage);
 
 	return numBytesReceived;
 }
