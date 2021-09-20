@@ -31,42 +31,42 @@
 #ifndef GODOT_WIN_SOCKET_H
 #define GODOT_WIN_SOCKET_H
 
+#ifndef _WIN32_WINNT
+#define  _WIN32_WINNT
+#endif
+
 #include <stdio.h>
+#include <boost/asio.hpp>
 
 #include <Godot.hpp>
 #include <Node.hpp>
 #include <StreamPeerBuffer.hpp>
 
-#include <winsock2.h>
-#include <mstcpip.h>
-#include <ws2tcpip.h>
-
-#define WIN_SOCKET_DEFAULT_BUFFER_SIZE 16384
 
 class WinSocket : public godot::Node {
 	GODOT_CLASS(WinSocket, godot::Node)
 
 private:
-	SOCKET winSocket = INVALID_SOCKET;
-	WSABUF headerBuffer = {0};
+	//SOCKET winSocket = INVALID_SOCKET;
+	//WSABUF headerBuffer = {0};
 	
-	unsigned int headerSize = 0;
+	//unsigned int headerSize = 0;
 	// Used in non blocking mode to remember how many bytes we are waiting for between calls.
-	unsigned int bytesLeft = 0;
-	unsigned int headerBufferIndex;
-	unsigned int messageBufferIndex;
+	//unsigned int bytesLeft = 0;
+	//unsigned int headerBufferIndex;
+	//unsigned int messageBufferIndex;
 
 	UINT16 shortHeader;
 	INT32 intHeader;
 
 	godot::StreamPeerBuffer* messageBuffer;
 	// tmpMessabeBuffer is allocated and used when receiving messages in non-blocking mode.
-	byte* tmpMessageBuffer = NULL;
+	//byte* tmpMessageBuffer = NULL;
 	// receiveBuffer is only used when the low level method receive is called instead of the receive_message method.
-	WSABUF receiveBuffer = {0};
+	//WSABUF receiveBuffer = {0};
 	//byte* receiveBuffer = NULL;
 
-	bool wsaInitialized = false;
+	//bool wsaInitialized = false;
 	bool debug = false;
 	bool isBlocking = true;
 
@@ -74,14 +74,14 @@ private:
 		
 	void blocking_receive_header();
 	int blocking_receive_message();
-	int blocking_receive(WSABUF* buffer);
+	//int blocking_receive(WSABUF* buffer);
 
 	void non_blocking_receive_header();
 	int non_blocking_receive_message();
 	int non_blocking_receive(byte* dataBuffer, unsigned int* dataBufferIndex, int numBytes);
 
 	void fill_message_buffer(byte* sourceBuffer, int messageSize);
-	void resolve_addr(struct sockaddr_in* serverAddr, const char* hostName, char* ip);
+	//void resolve_addr(struct sockaddr_in* serverAddr, const char* hostName, char* ip);
 
 public:
 	static void _register_methods();

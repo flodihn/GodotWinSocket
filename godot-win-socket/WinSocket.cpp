@@ -111,198 +111,30 @@ void WinSocket::_init()
 
 int WinSocket::winsock_init()
 {
-	debug_print("WinSock.winsock_init: Initializing winsock2...\n");
-	WSADATA wsaData;
-	WORD versionRequested = MAKEWORD(2, 2);
-
-	int error = WSAStartup(versionRequested, &wsaData);
-	winSocket = INVALID_SOCKET;
-
-	if (error > 0)
-	{
-		debug_print("WinSock.winsock_init: Failed to initialize winsock2.\n");
-		return error;
-	}
-
-	debug_print("WinSock.winsock_init: Successfully initialized winsock2.\n");
-	wsaInitialized = true;
 	return 0;
 }
 
 void WinSocket::winsock_cleanup()
 {
-	WSACleanup();
 }
 
 int WinSocket::connect_to_host(godot::String hostName, int port)
 {
-	struct sockaddr_in serverAddr;
-	const char* hostNameCStr = (const char*) hostName.ascii().get_data();
 	
-	if ((winSocket = socket(AF_INET, SOCK_STREAM, 0)) == INVALID_SOCKET)
-	{
-		int wsaError = WSAGetLastError();
-		char errorMessage[64];
-		sprintf(errorMessage, "WinSocket.connect_to_host: Could not create socket: %d!\n", wsaError);
-		debug_print(errorMessage);
-	}
-
-	char ip[255];
-
-	resolve_addr(&serverAddr, hostNameCStr, ip);
-
-	if(ip == NULL)
-	{
-		int wsaError = WSAGetLastError();
-		char errorMessage[64];
-		sprintf(errorMessage, "WinSocket.connect_to_host: Failed to resolve host %s with error %d!\n", hostNameCStr, wsaError);
-		debug_print(errorMessage);
-	}
-
-	serverAddr.sin_addr.s_addr = inet_addr(ip);
-	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_port = htons(port);
-
-	int connectError = ::connect(winSocket, (struct sockaddr*) &serverAddr, sizeof(serverAddr));
-
-	if (connectError < 0)
-	{
-		int wsaError = WSAGetLastError();
-		char errorMessage[64];
-		sprintf(errorMessage, "WinSocket.connect_to_host: Socket connect failed with error: %d!\n", wsaError);
-		debug_print(errorMessage);
-		return wsaError;
-	}
-
-	char successMessage[64];
-	sprintf(successMessage, "WinSocket.connect_to_host: Socket successfully connected to: %s:%d.\n", ip, port);
-	debug_print(successMessage);
 	return 0;
 }
 
 int WinSocket::secure_connect_to_host(godot::String, int port)
 {
-	struct sockaddr* serverAddr = NULL;
-	struct addrinfoW aiHints = {0};
-	struct addrinfoW* aiList = NULL;
-	SOCKET_SECURITY_SETTINGS securitySettings;
-	int iResult = 0;
-	int sockErr = 0;
-	DWORD flags = 0;
-	ULONG settingsLen = 0;
-	ULONG serverAddrLen = 0;
-	SOCKET_PEER_TARGET_NAME* peerTargetName = NULL;
-	
-	wchar_t* serverHost = L"localhost";
-	wchar_t* serverPort = L"2000";
-
-	securitySettings.SecurityProtocol = SOCKET_SECURITY_PROTOCOL_DEFAULT;
-	securitySettings.SecurityFlags = SOCKET_SETTINGS_GUARANTEE_ENCRYPTION;
-
-	aiHints.ai_family = AF_INET;
-	aiHints.ai_socktype = SOCK_STREAM;
-	aiHints.ai_protocol = IPPROTO_TCP;
-
-    // Set hostname
-	DWORD result = GetAddrInfoW(serverHost, serverPort, &aiHints, &aiList);
-	serverAddr = aiList->ai_addr;
-	serverAddrLen = (ULONG) aiList->ai_addrlen;
-
-    // Create a TCP socket
-	winSocket = WSASocket(serverAddr->sa_family, SOCK_STREAM, IPPROTO_TCP, NULL, 0, 0);
-	if (winSocket == INVALID_SOCKET) {
-		iResult = WSAGetLastError();
-		wprintf(L"WSASocket returned error %ld\n", iResult);
-		//goto cleanup;
-	}
-
-	sockErr = WSASetSocketSecurity(winSocket, &securitySettings, settingsLen, NULL, NULL);
-	if (sockErr == SOCKET_ERROR) {
-		iResult = WSAGetLastError();
-		wprintf(L"WSASetSocketSecurity returned error %ld\n", iResult);
-		//goto cleanup;
-	}
-	
-	/*
-	peerTargetName = (SOCKET_PEER_TARGET_NAME *) HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, peerTargetNameLen);
-	if (!peerTargetName) {
-		iResult = ERROR_NOT_ENOUGH_MEMORY;
-		wprintf(L"Out of memory\n");
-		//goto cleanup;
-	}
-	*/
-
-	peerTargetName->SecurityProtocol = securitySettings->SecurityProtocol;
-	// Specify the server SPN 
-	peerTargetName->PeerTargetNameStringLen = serverSpnStringLen;
-
-	/*
-	sockErr = WSASetSocketPeerTargetName(winSocket, peerTargetName, peerTargetNameLen, NULL, NULL);
-	if (sockErr == SOCKET_ERROR) {
-		iResult = WSAGetLastError();
-		wprintf(L"WSASetSocketPeerTargetName returned error %ld\n", iResult);
-		//goto cleanup;
-	}
-	*/
-
-	sockErr = WSAConnect(winSocket, serverAddr, serverAddrLen, NULL, NULL, NULL, NULL);
-	if (sockErr == SOCKET_ERROR) {
-		iResult = WSAGetLastError();
-		wprintf(L"WSAConnect returned error %ld\n", iResult);
-		//goto cleanup;
-	}
-	
-	// At this point a secure connection must have been established.
-	wprintf(L"Secure connection established to the server\n");
-
-    DWORD bytesRecvd = 0;
-    WSABUF wsaBuf = { 0 };
-    const int RECV_DATA_BUF_SIZE = 5;
-    char recvBuf[RECV_DATA_BUF_SIZE] = { 0 };
-
-    wsaBuf.len = RECV_DATA_BUF_SIZE;
-    wsaBuf.buf = recvBuf;
-    sockErr = WSARecv(winSocket, &wsaBuf, 1, &bytesRecvd, &flags, NULL, NULL);
-    if (sockErr == SOCKET_ERROR) {
-        iResult = WSAGetLastError();
-        wprintf(L"WSARecv returned error %ld\n", iResult);
-    }
-    wprintf(L"Received %d bytes of data from the server\n", bytesRecvd);
-
 	return 0;
 }
 
 void WinSocket::disconnect()
 {
-	int result = shutdown(winSocket, SD_SEND);
-	if (result == SOCKET_ERROR) {
-		int wsaError = WSAGetLastError();
-		char errorMessage[64];
-		sprintf(errorMessage, "WinSocket.disconnect: Clean shutdown failed, forcing disconnect: %d!\n", wsaError);
-		debug_print(errorMessage);
-	}
-	closesocket(winSocket);
 }
 
 void WinSocket::set_blocking(bool blocking)
 {
-	if (winSocket == INVALID_SOCKET) {
-		return;
-	}
-
-	// 0 for blocking, 1 for non blocking;
-	unsigned long ioctl_blocking_mode;
-
-	if (blocking)
-	{
-		ioctl_blocking_mode = 0;
-		ioctlsocket(winSocket, FIONBIO, (unsigned long*) &ioctl_blocking_mode);
-	}
-	else {
-		ioctl_blocking_mode = 1;
-		ioctlsocket(winSocket, FIONBIO, (unsigned long*) &ioctl_blocking_mode);
-	}
-
 	isBlocking = blocking;
 }
 
@@ -312,17 +144,7 @@ void WinSocket::set_message_header_size(int size)
 		debug_print("WinSocket.set_header error: Size must be 2 or 4 bytes.\n");
 		return;
 	}
-
-	if (headerSize > 0) {
-		::free(headerBuffer.buf);
-	}
-
 	headerSize = size;
-	headerBuffer.len = headerSize;
-
-	if (size > 0) {
-		headerBuffer.buf = (char*) malloc(headerSize);
-	}
 }
 
 void WinSocket::set_message_buffer(godot::Ref<godot::StreamPeerBuffer> messageBufferRef)
@@ -332,12 +154,6 @@ void WinSocket::set_message_buffer(godot::Ref<godot::StreamPeerBuffer> messageBu
 
 void WinSocket::set_receive_buffer(unsigned size)
 {
-	if(receiveBuffer.buf != NULL) {
-		::free(receiveBuffer.buf);
-	}
-
-	receiveBuffer.buf = (char*) malloc(size);
-	receiveBuffer.len = size;
 }
 
 void WinSocket::set_debug(bool debug)
@@ -382,18 +198,19 @@ void WinSocket::blocking_receive_header()
 {
 	if (headerSize == 2)
 	{
-		blocking_receive(&headerBuffer);
-		bytesLeft = ntohs((UINT16) headerBuffer.buf);
+		//blocking_receive(&headerBuffer);
+		//bytesLeft = ntohs((UINT16) headerBuffer.buf);
 	}
 	else if (headerSize == 4)
 	{
-		blocking_receive(&headerBuffer);
-		bytesLeft = (UINT32) headerBuffer.buf;
+		//blocking_receive(&headerBuffer);
+		//bytesLeft = (UINT32) headerBuffer.buf;
 	}
 }
 
 int WinSocket::blocking_receive_message()
 {
+    /*
 	wprintf(L"blocking_receive_message\n");
 	WSABUF tmpBuffer;
 	tmpBuffer.buf = (char*) malloc(bytesLeft);
@@ -407,8 +224,11 @@ int WinSocket::blocking_receive_message()
 	::free(tmpBuffer.buf);
 	wprintf(L"freeing tmpBuffer\n");
 	return numBytesReceived;
+    */
+    return 0;
 }
 
+/*
 int WinSocket::blocking_receive(WSABUF* buffer)
 {
 	DWORD numBytesReceived = 0;
@@ -425,9 +245,11 @@ int WinSocket::blocking_receive(WSABUF* buffer)
 	
 	return (int) numBytesReceived;
 }
+*/
 
 void WinSocket::non_blocking_receive_header()
 {
+    /*
 	int numBytesReceived = 0;
 
 	if (headerSize == 2) {
@@ -456,10 +278,12 @@ void WinSocket::non_blocking_receive_header()
 			tmpMessageBuffer = (byte*) malloc(bytesLeft);
 		}
 	}
+    */
 }
 
 int WinSocket::non_blocking_receive_message()
 {
+    /*
 	int numBytesReceived = non_blocking_receive(tmpMessageBuffer, &messageBufferIndex, bytesLeft);
 	bytesLeft -= numBytesReceived;
 
@@ -473,12 +297,13 @@ int WinSocket::non_blocking_receive_message()
 		tmpMessageBuffer = NULL;
 		return messageSize;
 	}
-
+    */
 	return 0;
 }
 
 int WinSocket::non_blocking_receive(byte* buffer, unsigned int* bufferIndex, int numBytes)
 {
+    /*
 	int numBytesReceived = recv(winSocket, (char*)buffer + *bufferIndex, numBytes, SEND_FLAGS);
 	if (numBytesReceived == SOCKET_ERROR) {
 		int error = WSAGetLastError();
@@ -490,7 +315,7 @@ int WinSocket::non_blocking_receive(byte* buffer, unsigned int* bufferIndex, int
 		*bufferIndex += numBytesReceived;
 		return numBytesReceived;
 	}
-
+    */
 	return 0;
 }
 
@@ -505,6 +330,7 @@ void WinSocket::fill_message_buffer(byte* sourceBuffer, int numBytes)
 
 int WinSocket::receive(godot::Ref<godot::StreamPeerBuffer> streamPeerBufferRef, unsigned bufferIndex, unsigned int numBytes)
 {
+    /*
 	if(receiveBuffer.buf == NULL)
 	{
 		receiveBuffer.buf = (char*) malloc(WIN_SOCKET_DEFAULT_BUFFER_SIZE);
@@ -539,10 +365,13 @@ int WinSocket::receive(godot::Ref<godot::StreamPeerBuffer> streamPeerBufferRef, 
 	debug_print(errorMessage);
 
 	return numBytesReceived;
+    */
+    return 0;
 }
 
 void WinSocket::send_message(const char* message)
 {
+    /*
 	if (headerSize == 0) {
 		send(winSocket, message, sizeof(message), SEND_FLAGS);
 		return;
@@ -559,10 +388,12 @@ void WinSocket::send_message(const char* message)
 		send(winSocket, (const char*)&header, sizeof(UINT32), SEND_FLAGS);
 		send(winSocket, message, sizeof(message), SEND_FLAGS);
 	}
+    */
 }
 
 void WinSocket::resolve_addr(struct sockaddr_in* serverAddr, const char* hostName, char* ip)
 {
+    /*
 	struct hostent* he;
 
 	if ((he = gethostbyname(hostName)) == NULL)
@@ -577,6 +408,7 @@ void WinSocket::resolve_addr(struct sockaddr_in* serverAddr, const char* hostNam
 	{
 		strcpy(ip, inet_ntoa(*addr_list[i]));
 	}
+    */
 }
 
 short WinSocket::ntohs(short var)
