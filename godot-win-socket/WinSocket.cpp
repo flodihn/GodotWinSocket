@@ -87,6 +87,7 @@ void WinSocket::_register_methods()
 	godot::register_method("winsock_cleanup", &WinSocket::winsock_cleanup);
 
 	godot::register_method("connect_to_host", &WinSocket::connect_to_host);
+	godot::register_method("secure_connect_to_host", &WinSocket::secure_connect_to_host);
 	godot::register_method("disconnect", &WinSocket::disconnect);
 
 	godot::register_method("set_message_header_size", &WinSocket::set_message_header_size);
@@ -136,8 +137,8 @@ void WinSocket::winsock_cleanup()
 int WinSocket::connect_to_host(godot::String hostName, int port)
 {
 	struct sockaddr_in serverAddr;
-	struct hostent* he;
-
+	const char* hostNameCStr = (const char*) hostName.ascii().get_data();
+	
 	if ((winSocket = socket(AF_INET, SOCK_STREAM, 0)) == INVALID_SOCKET)
 	{
 		int wsaError = WSAGetLastError();
@@ -146,19 +147,16 @@ int WinSocket::connect_to_host(godot::String hostName, int port)
 		debug_print(errorMessage);
 	}
 
-	if ((he = gethostbyname((const char*) hostName.ascii().get_data())) == NULL)
-	{
-		int wsaError = WSAGetLastError();
-		return wsaError;
-	}
-
-	struct in_addr** addr_list;
-	addr_list = (struct in_addr**)he->h_addr_list;
 	char ip[255];
 
-	for (int i = 0; addr_list[i] != NULL; i++)
+	resolve_addr(&serverAddr, hostNameCStr, ip);
+
+	if(ip == NULL)
 	{
-		strcpy(ip, inet_ntoa(*addr_list[i]));
+		int wsaError = WSAGetLastError();
+		char errorMessage[64];
+		sprintf(errorMessage, "WinSocket.connect_to_host: Failed to resolve host %s with error %d!\n", hostNameCStr, wsaError);
+		debug_print(errorMessage);
 	}
 
 	serverAddr.sin_addr.s_addr = inet_addr(ip);
@@ -179,6 +177,98 @@ int WinSocket::connect_to_host(godot::String hostName, int port)
 	char successMessage[64];
 	sprintf(successMessage, "WinSocket.connect_to_host: Socket successfully connected to: %s:%d.\n", ip, port);
 	debug_print(successMessage);
+	return 0;
+}
+
+int WinSocket::secure_connect_to_host(godot::String, int port)
+{
+	struct sockaddr* serverAddr = NULL;
+	struct addrinfoW aiHints = {0};
+	struct addrinfoW* aiList = NULL;
+	SOCKET_SECURITY_SETTINGS securitySettings;
+	int iResult = 0;
+	int sockErr = 0;
+	DWORD flags = 0;
+	ULONG settingsLen = 0;
+	ULONG serverAddrLen = 0;
+	SOCKET_PEER_TARGET_NAME* peerTargetName = NULL;
+	
+	wchar_t* serverHost = L"localhost";
+	wchar_t* serverPort = L"2000";
+
+	securitySettings.SecurityProtocol = SOCKET_SECURITY_PROTOCOL_DEFAULT;
+	securitySettings.SecurityFlags = SOCKET_SETTINGS_GUARANTEE_ENCRYPTION;
+
+	aiHints.ai_family = AF_INET;
+	aiHints.ai_socktype = SOCK_STREAM;
+	aiHints.ai_protocol = IPPROTO_TCP;
+
+    // Set hostname
+	DWORD result = GetAddrInfoW(serverHost, serverPort, &aiHints, &aiList);
+	serverAddr = aiList->ai_addr;
+	serverAddrLen = (ULONG) aiList->ai_addrlen;
+
+    // Create a TCP socket
+	winSocket = WSASocket(serverAddr->sa_family, SOCK_STREAM, IPPROTO_TCP, NULL, 0, 0);
+	if (winSocket == INVALID_SOCKET) {
+		iResult = WSAGetLastError();
+		wprintf(L"WSASocket returned error %ld\n", iResult);
+		//goto cleanup;
+	}
+
+	sockErr = WSASetSocketSecurity(winSocket, &securitySettings, settingsLen, NULL, NULL);
+	if (sockErr == SOCKET_ERROR) {
+		iResult = WSAGetLastError();
+		wprintf(L"WSASetSocketSecurity returned error %ld\n", iResult);
+		//goto cleanup;
+	}
+	
+	/*
+	peerTargetName = (SOCKET_PEER_TARGET_NAME *) HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, peerTargetNameLen);
+	if (!peerTargetName) {
+		iResult = ERROR_NOT_ENOUGH_MEMORY;
+		wprintf(L"Out of memory\n");
+		//goto cleanup;
+	}
+	*/
+
+	peerTargetName->SecurityProtocol = securitySettings->SecurityProtocol;
+	// Specify the server SPN 
+	peerTargetName->PeerTargetNameStringLen = serverSpnStringLen;
+
+	/*
+	sockErr = WSASetSocketPeerTargetName(winSocket, peerTargetName, peerTargetNameLen, NULL, NULL);
+	if (sockErr == SOCKET_ERROR) {
+		iResult = WSAGetLastError();
+		wprintf(L"WSASetSocketPeerTargetName returned error %ld\n", iResult);
+		//goto cleanup;
+	}
+	*/
+
+	sockErr = WSAConnect(winSocket, serverAddr, serverAddrLen, NULL, NULL, NULL, NULL);
+	if (sockErr == SOCKET_ERROR) {
+		iResult = WSAGetLastError();
+		wprintf(L"WSAConnect returned error %ld\n", iResult);
+		//goto cleanup;
+	}
+	
+	// At this point a secure connection must have been established.
+	wprintf(L"Secure connection established to the server\n");
+
+    DWORD bytesRecvd = 0;
+    WSABUF wsaBuf = { 0 };
+    const int RECV_DATA_BUF_SIZE = 5;
+    char recvBuf[RECV_DATA_BUF_SIZE] = { 0 };
+
+    wsaBuf.len = RECV_DATA_BUF_SIZE;
+    wsaBuf.buf = recvBuf;
+    sockErr = WSARecv(winSocket, &wsaBuf, 1, &bytesRecvd, &flags, NULL, NULL);
+    if (sockErr == SOCKET_ERROR) {
+        iResult = WSAGetLastError();
+        wprintf(L"WSARecv returned error %ld\n", iResult);
+    }
+    wprintf(L"Received %d bytes of data from the server\n", bytesRecvd);
+
 	return 0;
 }
 
@@ -224,13 +314,14 @@ void WinSocket::set_message_header_size(int size)
 	}
 
 	if (headerSize > 0) {
-		::free(headerBuffer);
+		::free(headerBuffer.buf);
 	}
 
 	headerSize = size;
+	headerBuffer.len = headerSize;
 
 	if (size > 0) {
-		headerBuffer = (byte*)malloc(headerSize);
+		headerBuffer.buf = (char*) malloc(headerSize);
 	}
 }
 
@@ -241,11 +332,12 @@ void WinSocket::set_message_buffer(godot::Ref<godot::StreamPeerBuffer> messageBu
 
 void WinSocket::set_receive_buffer(unsigned size)
 {
-	if(receiveBuffer != NULL) {
-		::free(receiveBuffer);
+	if(receiveBuffer.buf != NULL) {
+		::free(receiveBuffer.buf);
 	}
 
-	receiveBuffer = (byte*) malloc(size);
+	receiveBuffer.buf = (char*) malloc(size);
+	receiveBuffer.len = size;
 }
 
 void WinSocket::set_debug(bool debug)
@@ -261,6 +353,7 @@ void WinSocket::debug_print(const char* output)
 
 int WinSocket::receive_message()
 {
+	wprintf(L"Receive message...\n");
 	if (headerSize == 0) {
 		return 0;
 	}
@@ -272,7 +365,9 @@ int WinSocket::receive_message()
 
 	if(isBlocking)
 	{
+		wprintf(L"Receive message header\n");
 		blocking_receive_header();
+		wprintf(L"Received full header\n");
 		return blocking_receive_message();
 	} else {
 		if (headerBufferIndex < headerSize) {
@@ -287,34 +382,48 @@ void WinSocket::blocking_receive_header()
 {
 	if (headerSize == 2)
 	{
-		blocking_receive((byte*) &headerBuffer, sizeof(UINT16));
-		bytesLeft = ntohs((UINT16) headerBuffer);
+		blocking_receive(&headerBuffer);
+		bytesLeft = ntohs((UINT16) headerBuffer.buf);
 	}
 	else if (headerSize == 4)
 	{
-		blocking_receive((byte*) &headerBuffer, sizeof(UINT32));
-		bytesLeft = (UINT32) headerBuffer;
+		blocking_receive(&headerBuffer);
+		bytesLeft = (UINT32) headerBuffer.buf;
 	}
 }
 
 int WinSocket::blocking_receive_message()
 {
-	byte* tmpBuffer = (byte*) malloc(bytesLeft);
-	int numBytesReceived = blocking_receive(tmpBuffer, bytesLeft);
-	fill_message_buffer(tmpBuffer, bytesLeft);
-	::free(tmpBuffer);
+	wprintf(L"blocking_receive_message\n");
+	WSABUF tmpBuffer;
+	tmpBuffer.buf = (char*) malloc(bytesLeft);
+	tmpBuffer.len = bytesLeft;
+
+	wprintf(L"created tmpBuffer\n");
+	int numBytesReceived = blocking_receive(&tmpBuffer);
+	wprintf(L"receved full message\n");
+	fill_message_buffer((byte*) tmpBuffer.buf, bytesLeft);
+	wprintf(L"filled message buffer\n");
+	::free(tmpBuffer.buf);
+	wprintf(L"freeing tmpBuffer\n");
 	return numBytesReceived;
 }
 
-int WinSocket::blocking_receive(byte* buffer, int numBytes)
+int WinSocket::blocking_receive(WSABUF* buffer)
 {
-	int bytesLeft = numBytes;
-	while (bytesLeft > 0) {
-		int numBytesReceived = recv(winSocket, (char*)buffer, bytesLeft, RECEIVE_FLAGS);
+	DWORD numBytesReceived = 0;
+	ULONG bytesLeft = buffer->len;
+		
+	DWORD lpFlags = MSG_WAITALL;
+	while(bytesLeft > 0) {
+		WSARecv(winSocket, buffer, 1, &numBytesReceived, &lpFlags, NULL, NULL);
 		bytesLeft -= numBytesReceived;
-	}
 
-	return numBytes;
+		wprintf(L"WSARecv numBytesReceived: %ld\n", numBytesReceived);
+		wprintf(L"WSARecv bytesLeft: %d\n", bytesLeft);
+	}
+	
+	return (int) numBytesReceived;
 }
 
 void WinSocket::non_blocking_receive_header()
@@ -370,7 +479,7 @@ int WinSocket::non_blocking_receive_message()
 
 int WinSocket::non_blocking_receive(byte* buffer, unsigned int* bufferIndex, int numBytes)
 {
-	int numBytesReceived = recv(winSocket, (char*)buffer + *bufferIndex, numBytes, RECEIVE_FLAGS);
+	int numBytesReceived = recv(winSocket, (char*)buffer + *bufferIndex, numBytes, SEND_FLAGS);
 	if (numBytesReceived == SOCKET_ERROR) {
 		int error = WSAGetLastError();
 		if (error == WSAEWOULDBLOCK) {
@@ -396,15 +505,16 @@ void WinSocket::fill_message_buffer(byte* sourceBuffer, int numBytes)
 
 int WinSocket::receive(godot::Ref<godot::StreamPeerBuffer> streamPeerBufferRef, unsigned bufferIndex, unsigned int numBytes)
 {
-	if(receiveBuffer == NULL)
+	if(receiveBuffer.buf == NULL)
 	{
-		receiveBuffer = (byte*) malloc(WIN_SOCKET_DEFAULT_BUFFER_SIZE);
+		receiveBuffer.buf = (char*) malloc(WIN_SOCKET_DEFAULT_BUFFER_SIZE);
+		receiveBuffer.len = WIN_SOCKET_DEFAULT_BUFFER_SIZE;
 	}
 
 	godot::StreamPeerBuffer* streamPeerBuffer = streamPeerBufferRef.ptr();
 	godot::PoolByteArray* poolByteArray = &streamPeerBuffer->get_data_array();
 
-	int numBytesReceived = recv(winSocket, (char*) receiveBuffer, numBytes, RECEIVE_FLAGS);
+	int numBytesReceived = recv(winSocket, receiveBuffer.buf, numBytes, RECEIVE_FLAGS);
 	if (numBytesReceived == SOCKET_ERROR) {
 		int wsaError = WSAGetLastError();
 
@@ -420,7 +530,7 @@ int WinSocket::receive(godot::Ref<godot::StreamPeerBuffer> streamPeerBufferRef, 
 
 	if(numBytesReceived > 0) {
 		for (int i = 0; i < numBytesReceived; i++) {
-			poolByteArray->set(i + bufferIndex, receiveBuffer[i]);
+			poolByteArray->set(i + bufferIndex, receiveBuffer.buf[i]);
 		}
 	}
 
@@ -451,6 +561,24 @@ void WinSocket::send_message(const char* message)
 	}
 }
 
+void WinSocket::resolve_addr(struct sockaddr_in* serverAddr, const char* hostName, char* ip)
+{
+	struct hostent* he;
+
+	if ((he = gethostbyname(hostName)) == NULL)
+	{
+		return;
+	}
+
+	struct in_addr** addr_list;
+	addr_list = (struct in_addr**) he->h_addr_list;
+
+	for (int i = 0; addr_list[i] != NULL; i++)
+	{
+		strcpy(ip, inet_ntoa(*addr_list[i]));
+	}
+}
+
 short WinSocket::ntohs(short var)
 {
 	return(::ntohs(var));
@@ -459,16 +587,4 @@ short WinSocket::ntohs(short var)
 int WinSocket::htonl(int var)
 {
 	return(::htonl(var));
-}
-
-
-void debug_print(const char* output, int debugMode)
-{
-	if (debugMode == WIN_SOCKET_DEBUG_MODE_NONE) return;
-
-	if (debugMode == WIN_SOCKET_DEBUG_MODE_GODOT)
-		godot::Godot::print(output);
-
-	if (debugMode == WIN_SOCKET_DEBUG_MODE_STDOUT)
-		printf(output);
 }

@@ -10,13 +10,12 @@ config_version=4
 
 _global_script_classes=[  ]
 _global_script_class_icons={
-
 }
 
 [application]
 
 config/name="GodotWinSocket"
-run/main_scene="res://WinSocket.tscn"
+run/main_scene="res://WinSocketScene.tscn"
 config/icon="res://icon.png"
 
 [gdnative]

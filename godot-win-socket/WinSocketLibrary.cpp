@@ -1,11 +1,11 @@
 /*************************************************************************/
-/*  WinSocketLibrary.cpp  		                                         */
+/*  WinSocketLibrary.cpp                                                 */
 /*************************************************************************/
 /*                       This file is part of:                           */
 /*                       GODOT WINSOCK PLUGIN                            */
 /*             https://github.com/flodihn/GodotWinSocket                 */
 /*************************************************************************/
-/* Copyright (c) 2021 Christian Flodihn.				                 */
+/* Copyright (c) 2021 Christian Flodihn.                                 */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -29,15 +29,15 @@
 #include "WinSocket.hpp"
 
 extern "C" void GDN_EXPORT godot_gdnative_init(godot_gdnative_init_options * o) {
-	godot::Godot::gdnative_init(o);
+    godot::Godot::gdnative_init(o);
 }
 
 extern "C" void GDN_EXPORT godot_gdnative_terminate(godot_gdnative_terminate_options * o) {
-	godot::Godot::gdnative_terminate(o);
+    godot::Godot::gdnative_terminate(o);
 }
 
 extern "C" void GDN_EXPORT godot_nativescript_init(void* handle) {
-	godot::Godot::nativescript_init(handle);
+    godot::Godot::nativescript_init(handle);
 
-	godot::register_class<WinSocket>();
+    godot::register_class<WinSocket>();
 }

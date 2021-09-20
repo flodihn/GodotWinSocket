@@ -38,6 +38,8 @@
 #include <StreamPeerBuffer.hpp>
 
 #include <winsock2.h>
+#include <mstcpip.h>
+#include <ws2tcpip.h>
 
 #define WIN_SOCKET_DEFAULT_BUFFER_SIZE 16384
 
@@ -46,7 +48,8 @@ class WinSocket : public godot::Node {
 
 private:
 	SOCKET winSocket = INVALID_SOCKET;
-	byte* headerBuffer;
+	WSABUF headerBuffer = {0};
+	
 	unsigned int headerSize = 0;
 	// Used in non blocking mode to remember how many bytes we are waiting for between calls.
 	unsigned int bytesLeft = 0;
@@ -60,7 +63,8 @@ private:
 	// tmpMessabeBuffer is allocated and used when receiving messages in non-blocking mode.
 	byte* tmpMessageBuffer = NULL;
 	// receiveBuffer is only used when the low level method receive is called instead of the receive_message method.
-	byte* receiveBuffer = NULL;
+	WSABUF receiveBuffer = {0};
+	//byte* receiveBuffer = NULL;
 
 	bool wsaInitialized = false;
 	bool debug = false;
@@ -70,13 +74,14 @@ private:
 		
 	void blocking_receive_header();
 	int blocking_receive_message();
-	int blocking_receive(byte* buffer, int numBytes);
+	int blocking_receive(WSABUF* buffer);
 
 	void non_blocking_receive_header();
 	int non_blocking_receive_message();
 	int non_blocking_receive(byte* dataBuffer, unsigned int* dataBufferIndex, int numBytes);
 
 	void fill_message_buffer(byte* sourceBuffer, int messageSize);
+	void resolve_addr(struct sockaddr_in* serverAddr, const char* hostName, char* ip);
 
 public:
 	static void _register_methods();
@@ -87,6 +92,8 @@ public:
 	void winsock_cleanup();
 	
 	int connect_to_host(godot::String hostName, int port);
+	int secure_connect_to_host(godot::String hostName, int port);
+
 	void disconnect();
 	void set_message_header_size(int size);
 	void set_message_buffer(godot::Ref<godot::StreamPeerBuffer> messageBufferRef);

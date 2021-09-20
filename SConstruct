@@ -95,7 +95,7 @@ cpp_library += '.' + str(bits)
 # make sure our binding library is properly includes
 env.Append(CPPPATH=['.', godot_headers_path, cpp_bindings_path + 'include/', cpp_bindings_path + 'include/core/', cpp_bindings_path + 'include/gen/'])
 env.Append(LIBPATH=['godot-win-socket', cpp_bindings_path + 'bin/'])
-env.Append(LIBS=[cpp_library, 'WS2_32'])
+env.Append(LIBS=[cpp_library, 'WS2_32', 'fwpuclnt'])
 
 # tweak this if you want to use different folders, or more folders, to store your source code in.
 env.Append(CPPPATH=['godot-win-socket/'])
