@@ -1,4 +1,3 @@
-#define _WINSOCK_DEPRECATED_NO_WARNINGS
 /*************************************************************************/
 /*  WinSocket.hpp  		                                                 */
 /*************************************************************************/
@@ -31,83 +30,52 @@
 #ifndef GODOT_WIN_SOCKET_H
 #define GODOT_WIN_SOCKET_H
 
-#ifndef _WIN32_WINNT
-#define  _WIN32_WINNT
-#endif
-
 #include <stdio.h>
-#include <boost/asio.hpp>
 
 #include <Godot.hpp>
 #include <Node.hpp>
 #include <StreamPeerBuffer.hpp>
 
+typedef char byte;
+
+#include "SocketWrapper.hpp"
 
 class WinSocket : public godot::Node {
-	GODOT_CLASS(WinSocket, godot::Node)
+    GODOT_CLASS(WinSocket, godot::Node)
 
 private:
-	//SOCKET winSocket = INVALID_SOCKET;
-	//WSABUF headerBuffer = {0};
-	
-	//unsigned int headerSize = 0;
-	// Used in non blocking mode to remember how many bytes we are waiting for between calls.
-	//unsigned int bytesLeft = 0;
-	//unsigned int headerBufferIndex;
-	//unsigned int messageBufferIndex;
+    SocketWrapper socketWrapper;
 
-	UINT16 shortHeader;
-	INT32 intHeader;
+    bool debug = false;
+    unsigned int headerSize = 0;
 
-	godot::StreamPeerBuffer* messageBuffer;
-	// tmpMessabeBuffer is allocated and used when receiving messages in non-blocking mode.
-	//byte* tmpMessageBuffer = NULL;
-	// receiveBuffer is only used when the low level method receive is called instead of the receive_message method.
-	//WSABUF receiveBuffer = {0};
-	//byte* receiveBuffer = NULL;
+    // Used when receiving full message with 2 or 4 byte header.
+    godot::StreamPeerBuffer* messageBuffer;
 
-	//bool wsaInitialized = false;
-	bool debug = false;
-	bool isBlocking = true;
-
-	void debug_print(const char * output);
-		
-	void blocking_receive_header();
-	int blocking_receive_message();
-	//int blocking_receive(WSABUF* buffer);
-
-	void non_blocking_receive_header();
-	int non_blocking_receive_message();
-	int non_blocking_receive(byte* dataBuffer, unsigned int* dataBufferIndex, int numBytes);
-
-	void fill_message_buffer(byte* sourceBuffer, int messageSize);
-	//void resolve_addr(struct sockaddr_in* serverAddr, const char* hostName, char* ip);
-
+    void debug_print(const char * output);
+    void fill_message_buffer(const char*, int messageSize);
 public:
-	static void _register_methods();
-	void _init();
-	void _process(float delta);
-	
-	int winsock_init();
-	void winsock_cleanup();
-	
-	int connect_to_host(godot::String hostName, int port);
-	int secure_connect_to_host(godot::String hostName, int port);
+    static void _register_methods();
+    void _init();
+    void _process(float delta);
+    
+    int connect_to_host(godot::String hostname, int port);
+    void disconnect();
 
-	void disconnect();
-	void set_message_header_size(int size);
-	void set_message_buffer(godot::Ref<godot::StreamPeerBuffer> messageBufferRef);
-	void set_blocking(bool blocking);
-	void set_debug(bool debug);
+    void set_message_header_size(int size);
+    void set_message_buffer(godot::Ref<godot::StreamPeerBuffer> messageBufferRef);
+    void set_ssl(bool trueOrFalse);
+    void set_debug(bool trueOrFalse);
+    void set_receive_buffer(unsigned size);
 
-	int receive_message();
-	int receive(godot::Ref<godot::StreamPeerBuffer> streamPeerBufferRef, unsigned bufferIndex, unsigned int numBytes);
-	void set_receive_buffer(unsigned size);
+    int blocking_receive_message();
+    int blocking_receive(int numBytes);
 
-	void send_message(const char* data);
+    int send_message(godot::PoolByteArray sendBuffer);
+    //int send_bytes(const char* bytes);
 
-	short ntohs(short var);
-	int htonl(int var);
+    short ntohs(short var);
+    int htonl(int var);
 };
 
 #endif

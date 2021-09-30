@@ -74,7 +74,7 @@ elif env['platform'] == "windows":
     # that way you can run scons in a vs 2017 prompt and it will find all the required tools
     env.Append(ENV=os.environ)
 
-    env.Append(CPPDEFINES=['WIN32', '_WIN32', '_WINDOWS', '_CRT_SECURE_NO_WARNINGS'])
+    env.Append(CPPDEFINES=['WIN32', '_WIN32', '_WINDOWS', '_CRT_SECURE_NO_WARNINGS', '_WIN32_WINDOWS'])
     env.Append(CCFLAGS=['-W3', '-GR'])
     env.Append(CXXFLAGS='/std:c++17')
     if env['target'] in ('debug', 'd'):
@@ -93,16 +93,16 @@ else:
 cpp_library += '.' + str(bits)
 
 # make sure our binding library is properly includes
-env.Append(CPPPATH=['.', godot_headers_path, cpp_bindings_path + 'include/', cpp_bindings_path + 'include/core/', cpp_bindings_path + 'include/gen/'])
-env.Append(LIBPATH=['godot-win-socket', cpp_bindings_path + 'bin/'])
-env.Append(LIBS=[cpp_library, 'WS2_32', 'fwpuclnt'])
+env.Append(CPPPATH=['.', godot_headers_path, cpp_bindings_path + 'include/', cpp_bindings_path + 'include/core/', cpp_bindings_path + 'include/gen/', '../boost/', '../OpenSSL/include/'])
+env.Append(LIBPATH=['godot-win-socket', cpp_bindings_path + 'bin/', '../boost/stage/lib/', '../OpenSSL/lib/'])
+env.Append(LIBS=[cpp_library, 'libssl', 'libcrypto'])
 
 # tweak this if you want to use different folders, or more folders, to store your source code in.
 env.Append(CPPPATH=['godot-win-socket/'])
 
 
 # sources = Glob('godot-win-socket/*.cpp')
-sources = Split('godot-win-socket/WinSocketLibrary.cpp godot-win-socket/WinSocket.cpp')
+sources = Split('godot-win-socket/WinSocketLibrary.cpp godot-win-socket/WinSocket.cpp godot-win-socket/SocketWrapper.cpp')
 library = env.SharedLibrary(target=env['target_path'] + env['target_name'] , source=sources)
 Default(library)
 

@@ -37,9 +37,6 @@
 
 #include "WinSocket.hpp"
 
-#define RECEIVE_FLAGS 0
-#define SEND_FLAGS 0
-
 /*
  * WinSocket exposes a low level socket implementation based on winsock2.
  * It provides functions to connect to a host and port, receive and send 
@@ -79,344 +76,155 @@
  * or maybe SDL would be a good idea.
  * Use varargs for debug_print method.
  */
+
+#define RECEIVE_FLAGS 0
+#define SEND_FLAGS 0
+
+using std::string;
+using std::cout;
+using std::endl;
+
+/*
+bool verify_certificate(boost::asio::ssl::verify_context& ctx)
+{
+    // The verify callback can be used to check whether the certificate that is
+    // being presented is valid for the peer. For example, RFC 2818 describes
+    // the steps involved in doing this for HTTPS. Consult the OpenSSL
+    // documentation for more details. Note that the callback is called once
+    // for each certificate in the certificate chain, starting from the root
+    // certificate authority.
+
+    // In this example we will simply print the certificate's subject name.
+    char subject_name[256];
+    X509* cert = X509_STORE_CTX_get_current_cert(ctx.native_handle());
+    X509_NAME_oneline(X509_get_subject_name(cert), subject_name, 256);
+    std::cout << "Verifying " << subject_name << "\n";
+    return preverified;
+    return true;
+}
+*/
+
 void WinSocket::_register_methods()
 {
-	godot::register_method("_init", &WinSocket::_init);
+    godot::register_method("_init", &WinSocket::_init);
 
-	godot::register_method("winsock_init", &WinSocket::winsock_init);
-	godot::register_method("winsock_cleanup", &WinSocket::winsock_cleanup);
+    godot::register_method("connect_to_host", &WinSocket::connect_to_host);
+    godot::register_method("disconnect", &WinSocket::disconnect);
 
-	godot::register_method("connect_to_host", &WinSocket::connect_to_host);
-	godot::register_method("secure_connect_to_host", &WinSocket::secure_connect_to_host);
-	godot::register_method("disconnect", &WinSocket::disconnect);
+    godot::register_method("set_message_header_size", &WinSocket::set_message_header_size);
+    godot::register_method("set_message_buffer", &WinSocket::set_message_buffer);
+    godot::register_method("set_ssl", &WinSocket::set_ssl);
+    godot::register_method("set_debug", &WinSocket::set_debug);
 
-	godot::register_method("set_message_header_size", &WinSocket::set_message_header_size);
-	godot::register_method("set_message_buffer", &WinSocket::set_message_buffer);
-	godot::register_method("set_blocking", &WinSocket::set_blocking);
-	godot::register_method("set_receive_buffer", &WinSocket::set_receive_buffer);
-	godot::register_method("set_debug", &WinSocket::set_debug);
+    godot::register_method("receive_message", &WinSocket::blocking_receive_message);
+    godot::register_method("receive", &WinSocket::blocking_receive);
 
-	godot::register_method("receive_message", &WinSocket::receive_message);
-	godot::register_method("receive", &WinSocket::receive);
-	
-	godot::register_method("ntohs", &WinSocket::ntohs);
-	godot::register_method("htonl", &WinSocket::htonl);
-	
-	godot::register_property<WinSocket, bool>("debug", &WinSocket::debug, false);
+    godot::register_method("send_message", &WinSocket::send_message);
+    
+    godot::register_method("ntohs", &WinSocket::ntohs);
+    godot::register_method("htonl", &WinSocket::htonl);
+    
+    godot::register_property<WinSocket, bool>("debug", &WinSocket::debug, false);
 }
 
 void WinSocket::_init()
 {
 }
 
-int WinSocket::winsock_init()
+int WinSocket::connect_to_host(godot::String hostname, int port)
 {
-	return 0;
-}
+    debug_print("Connecting to host...");
+    int error = socketWrapper.connect(hostname.ascii().get_data(), port);
 
-void WinSocket::winsock_cleanup()
-{
-}
+    if(error) {
+        debug_print("Failed to connect.");
+    } else {
+        debug_print("Connected successfully.");
+    }
 
-int WinSocket::connect_to_host(godot::String hostName, int port)
-{
-	
-	return 0;
-}
-
-int WinSocket::secure_connect_to_host(godot::String, int port)
-{
-	return 0;
+    return error;
 }
 
 void WinSocket::disconnect()
 {
 }
 
-void WinSocket::set_blocking(bool blocking)
+void WinSocket::set_ssl(bool trueOrFalse)
 {
-	isBlocking = blocking;
+    socketWrapper.sslEnabled = trueOrFalse;
+}
+
+void WinSocket::set_debug(bool trueOrFalse)
+{
+    debug = trueOrFalse;
 }
 
 void WinSocket::set_message_header_size(int size)
 {
-	if (!(size == 2 || size == 4)) {
-		debug_print("WinSocket.set_header error: Size must be 2 or 4 bytes.\n");
-		return;
-	}
-	headerSize = size;
+    if (!(size == 2 || size == 4)) {
+        debug_print("WinSocket.set_header error: Size must be 2 or 4 bytes.\n");
+        return;
+    }
+    headerSize = size;
 }
 
 void WinSocket::set_message_buffer(godot::Ref<godot::StreamPeerBuffer> messageBufferRef)
 {
-	messageBuffer = messageBufferRef.ptr();
-}
-
-void WinSocket::set_receive_buffer(unsigned size)
-{
-}
-
-void WinSocket::set_debug(bool debug)
-{
-	this->debug = debug;
+    messageBuffer = messageBufferRef.ptr();
 }
 
 void WinSocket::debug_print(const char* output)
 {
-	if (!debug) return;
-	godot::Godot::print(output);
-}
-
-int WinSocket::receive_message()
-{
-	wprintf(L"Receive message...\n");
-	if (headerSize == 0) {
-		return 0;
-	}
-
-	if (headerBufferIndex == 0)
-	{
-		bytesLeft = headerSize;
-	}
-
-	if(isBlocking)
-	{
-		wprintf(L"Receive message header\n");
-		blocking_receive_header();
-		wprintf(L"Received full header\n");
-		return blocking_receive_message();
-	} else {
-		if (headerBufferIndex < headerSize) {
-			non_blocking_receive_header();
-		}
-
-		return non_blocking_receive_message();
-	}
-}
-
-void WinSocket::blocking_receive_header()
-{
-	if (headerSize == 2)
-	{
-		//blocking_receive(&headerBuffer);
-		//bytesLeft = ntohs((UINT16) headerBuffer.buf);
-	}
-	else if (headerSize == 4)
-	{
-		//blocking_receive(&headerBuffer);
-		//bytesLeft = (UINT32) headerBuffer.buf;
-	}
+    if (!debug) return;
+    godot::Godot::print(output);
 }
 
 int WinSocket::blocking_receive_message()
 {
-    /*
-	wprintf(L"blocking_receive_message\n");
-	WSABUF tmpBuffer;
-	tmpBuffer.buf = (char*) malloc(bytesLeft);
-	tmpBuffer.len = bytesLeft;
-
-	wprintf(L"created tmpBuffer\n");
-	int numBytesReceived = blocking_receive(&tmpBuffer);
-	wprintf(L"receved full message\n");
-	fill_message_buffer((byte*) tmpBuffer.buf, bytesLeft);
-	wprintf(L"filled message buffer\n");
-	::free(tmpBuffer.buf);
-	wprintf(L"freeing tmpBuffer\n");
-	return numBytesReceived;
-    */
-    return 0;
+    debug_print("Waiting for header...");
+    unsigned short rawHeader = socketWrapper.receive_ushort();
+    int messageSize = ntohs(rawHeader);
+    debug_print("Header received, waiting for message...");
+    blocking_receive(messageSize);
+    debug_print("Message received.");
+    return messageSize;
 }
 
-/*
-int WinSocket::blocking_receive(WSABUF* buffer)
+int WinSocket::blocking_receive(int numBytes)
 {
-	DWORD numBytesReceived = 0;
-	ULONG bytesLeft = buffer->len;
-		
-	DWORD lpFlags = MSG_WAITALL;
-	while(bytesLeft > 0) {
-		WSARecv(winSocket, buffer, 1, &numBytesReceived, &lpFlags, NULL, NULL);
-		bytesLeft -= numBytesReceived;
-
-		wprintf(L"WSARecv numBytesReceived: %ld\n", numBytesReceived);
-		wprintf(L"WSARecv bytesLeft: %d\n", bytesLeft);
-	}
-	
-	return (int) numBytesReceived;
-}
-*/
-
-void WinSocket::non_blocking_receive_header()
-{
-    /*
-	int numBytesReceived = 0;
-
-	if (headerSize == 2) {
-		numBytesReceived = non_blocking_receive((byte*) &shortHeader, &headerBufferIndex, bytesLeft);
-	}
-	else if (headerSize == 4)
-	{
-		numBytesReceived = non_blocking_receive((byte*) &intHeader, &headerBufferIndex, bytesLeft);
-	}
-
-	bytesLeft -= numBytesReceived;
-
-	if (headerBufferIndex == headerSize)
-	{
-		if (headerSize == 2) {
-			bytesLeft = ntohs(shortHeader);
-		} else if(headerSize == 4) {
-			bytesLeft = htonl(intHeader);
-		}
-
-		if(tmpMessageBuffer != NULL) {
-			::free(tmpMessageBuffer);
-		}
-
-		if(bytesLeft > 0) {
-			tmpMessageBuffer = (byte*) malloc(bytesLeft);
-		}
-	}
-    */
+    const char* data = socketWrapper.receive_bytes(numBytes);
+    fill_message_buffer(data, numBytes);
+    return numBytes;
 }
 
-int WinSocket::non_blocking_receive_message()
+int WinSocket::send_message(godot::PoolByteArray sendBuffer)
 {
-    /*
-	int numBytesReceived = non_blocking_receive(tmpMessageBuffer, &messageBufferIndex, bytesLeft);
-	bytesLeft -= numBytesReceived;
+    int numBytes = sendBuffer.size();
+    if(headerSize == 2 || headerSize == 4) {
+        unsigned short header = numBytes;
+        socketWrapper.send_ushort(numBytes);
+    }
 
-	if (bytesLeft == 0) {
-		int messageSize = messageBufferIndex;
-		headerBufferIndex = 0;
-		messageBufferIndex = 0;
-
-		fill_message_buffer(tmpMessageBuffer, messageSize);
-		::free(tmpMessageBuffer);
-		tmpMessageBuffer = NULL;
-		return messageSize;
-	}
-    */
-	return 0;
+    const char* bytes = (const char*) sendBuffer.read().ptr();
+    socketWrapper.send_bytes(bytes, numBytes);
+    return 1;
 }
 
-int WinSocket::non_blocking_receive(byte* buffer, unsigned int* bufferIndex, int numBytes)
+void WinSocket::fill_message_buffer(const char* sourceBuffer, int numBytes)
 {
-    /*
-	int numBytesReceived = recv(winSocket, (char*)buffer + *bufferIndex, numBytes, SEND_FLAGS);
-	if (numBytesReceived == SOCKET_ERROR) {
-		int error = WSAGetLastError();
-		if (error == WSAEWOULDBLOCK) {
-			return 0;
-		}
-	}
-	else {
-		*bufferIndex += numBytesReceived;
-		return numBytesReceived;
-	}
-    */
-	return 0;
-}
-
-void WinSocket::fill_message_buffer(byte* sourceBuffer, int numBytes)
-{
-	messageBuffer->seek(0);
-	godot::PoolByteArray* poolByteArray = &messageBuffer->get_data_array();
-	for (int i = 0; i < numBytes; i++) {
-		poolByteArray->set(i, sourceBuffer[i]);
-	}
-}
-
-int WinSocket::receive(godot::Ref<godot::StreamPeerBuffer> streamPeerBufferRef, unsigned bufferIndex, unsigned int numBytes)
-{
-    /*
-	if(receiveBuffer.buf == NULL)
-	{
-		receiveBuffer.buf = (char*) malloc(WIN_SOCKET_DEFAULT_BUFFER_SIZE);
-		receiveBuffer.len = WIN_SOCKET_DEFAULT_BUFFER_SIZE;
-	}
-
-	godot::StreamPeerBuffer* streamPeerBuffer = streamPeerBufferRef.ptr();
-	godot::PoolByteArray* poolByteArray = &streamPeerBuffer->get_data_array();
-
-	int numBytesReceived = recv(winSocket, receiveBuffer.buf, numBytes, RECEIVE_FLAGS);
-	if (numBytesReceived == SOCKET_ERROR) {
-		int wsaError = WSAGetLastError();
-
-		if(isBlocking && wsaError == WSAEWOULDBLOCK) {
-			return 0;
-		}
-
-		char errorMessage[32];
-		sprintf(errorMessage, "WinSocket.receive: WSA error: %d!\n", wsaError);
-		debug_print(errorMessage);
-		return SOCKET_ERROR;
-	}
-
-	if(numBytesReceived > 0) {
-		for (int i = 0; i < numBytesReceived; i++) {
-			poolByteArray->set(i + bufferIndex, receiveBuffer.buf[i]);
-		}
-	}
-
-	char errorMessage[64];
-	sprintf(errorMessage, "WinSocket.receive: Successfully received: %d bytes.\n", numBytesReceived);
-	debug_print(errorMessage);
-
-	return numBytesReceived;
-    */
-    return 0;
-}
-
-void WinSocket::send_message(const char* message)
-{
-    /*
-	if (headerSize == 0) {
-		send(winSocket, message, sizeof(message), SEND_FLAGS);
-		return;
-	}
-
-	if (headerSize == 2) {
-		UINT16 header = sizeof(message);
-		send(winSocket, (const char*) &header, sizeof(UINT16), SEND_FLAGS);
-		send(winSocket, message, sizeof(message), SEND_FLAGS);
-	}
-
-	if (headerSize == 4) {
-		UINT32 header = sizeof(message);
-		send(winSocket, (const char*)&header, sizeof(UINT32), SEND_FLAGS);
-		send(winSocket, message, sizeof(message), SEND_FLAGS);
-	}
-    */
-}
-
-void WinSocket::resolve_addr(struct sockaddr_in* serverAddr, const char* hostName, char* ip)
-{
-    /*
-	struct hostent* he;
-
-	if ((he = gethostbyname(hostName)) == NULL)
-	{
-		return;
-	}
-
-	struct in_addr** addr_list;
-	addr_list = (struct in_addr**) he->h_addr_list;
-
-	for (int i = 0; addr_list[i] != NULL; i++)
-	{
-		strcpy(ip, inet_ntoa(*addr_list[i]));
-	}
-    */
+    messageBuffer->seek(0);
+    godot::PoolByteArray* poolByteArray = &messageBuffer->get_data_array();
+    for (int i = 0; i < numBytes; i++) {
+        poolByteArray->set(i, sourceBuffer[i]);
+    }
 }
 
 short WinSocket::ntohs(short var)
 {
-	return(::ntohs(var));
+    return(::ntohs(var));
 }
 
 int WinSocket::htonl(int var)
 {
-	return(::htonl(var));
+    return(::htonl(var));
 }
