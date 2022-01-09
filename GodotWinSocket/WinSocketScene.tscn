@@ -1,11 +1,10 @@
 [gd_scene load_steps=3 format=2]
 
-[ext_resource path="res://WinSockTestThreaded.gd" type="Script" id=1]
-[ext_resource path="res://WinSocket.gdns" type="Script" id=2]
+[ext_resource path="res://SockTestThreaded.gd" type="Script" id=1]
+[ext_resource path="res://Socket.gdns" type="Script" id=2]
 
-[node name="WinSocket" type="Spatial"]
+[node name="SocketLibrary" type="Spatial"]
 script = ExtResource( 2 )
-debug = null
 
 [node name="Node" type="Node" parent="."]
 script = ExtResource( 1 )

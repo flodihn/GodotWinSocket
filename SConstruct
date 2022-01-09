@@ -12,7 +12,7 @@ opts.Add(EnumVariable('platform', "Compilation platform", '', ['', 'windows', 'x
 opts.Add(EnumVariable('p', "Compilation target, alias for 'platform'", '', ['', 'windows', 'x11', 'linux', 'osx']))
 opts.Add(BoolVariable('use_llvm', "Use the LLVM / Clang compiler", 'no'))
 opts.Add(PathVariable('target_path', 'The path where the lib is installed.', 'GodotWinSocket/bin/'))
-opts.Add(PathVariable('target_name', 'The library name.', 'WinSocket', PathVariable.PathAccept))
+opts.Add(PathVariable('target_name', 'The library name.', 'Socket', PathVariable.PathAccept))
 
 # Local dependency paths, adapt them to your setup
 godot_headers_path = "../godot-cpp/godot-headers/"
@@ -102,7 +102,7 @@ env.Append(CPPPATH=['godot-win-socket/'])
 
 
 # sources = Glob('godot-win-socket/*.cpp')
-sources = Split('godot-win-socket/WinSocketLibrary.cpp godot-win-socket/WinSocket.cpp godot-win-socket/SocketWrapper.cpp')
+sources = Split('godot-win-socket/SocketLibrary.cpp godot-win-socket/Socket.cpp godot-win-socket/SocketWrapper.cpp')
 library = env.SharedLibrary(target=env['target_path'] + env['target_name'] , source=sources)
 Default(library)
 
