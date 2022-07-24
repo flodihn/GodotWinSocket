@@ -11,7 +11,7 @@ opts.Add(EnumVariable('target', "Compilation target", 'debug', ['d', 'debug', 'r
 opts.Add(EnumVariable('platform', "Compilation platform", '', ['', 'windows', 'x11', 'linux', 'osx']))
 opts.Add(EnumVariable('p', "Compilation target, alias for 'platform'", '', ['', 'windows', 'x11', 'linux', 'osx']))
 opts.Add(BoolVariable('use_llvm', "Use the LLVM / Clang compiler", 'no'))
-opts.Add(PathVariable('target_path', 'The path where the lib is installed.', 'GodotWinSocket/bin/'))
+opts.Add(PathVariable('target_path', 'The path where the lib is installed.', 'GodotRawSocket/bin/'))
 opts.Add(PathVariable('target_name', 'The library name.', 'Socket', PathVariable.PathAccept))
 
 # Local dependency paths, adapt them to your setup
@@ -19,7 +19,7 @@ godot_headers_path = "../godot-cpp/godot-headers/"
 cpp_bindings_path = "../godot-cpp/"
 cpp_library = "libgodot-cpp"
 
-# only support 64 at this time..
+# We support only 64 bit platforms.
 bits = 64
 
 # Updates the environment with the option variables.
@@ -94,19 +94,19 @@ cpp_library += '.' + str(bits)
 
 # make sure our binding library is properly includes
 env.Append(CPPPATH=['.', godot_headers_path, cpp_bindings_path + 'include/', cpp_bindings_path + 'include/core/', cpp_bindings_path + 'include/gen/', '../boost/', '../OpenSSL/include/'])
-env.Append(LIBPATH=['godot-win-socket', cpp_bindings_path + 'bin/', '../boost/stage/lib/', '../OpenSSL/lib/'])
+env.Append(LIBPATH=['godot-raw-socket', cpp_bindings_path + 'bin/', '../boost/stage/lib/', '../OpenSSL/lib/'])
 env.Append(LIBS=[cpp_library, 'libssl', 'libcrypto'])
 
 # tweak this if you want to use different folders, or more folders, to store your source code in.
-env.Append(CPPPATH=['godot-win-socket/'])
+env.Append(CPPPATH=['godot-raw-socket/'])
 
 
-# sources = Glob('godot-win-socket/*.cpp')
-sources = Split('godot-win-socket/SocketLibrary.cpp godot-win-socket/Socket.cpp godot-win-socket/SocketWrapper.cpp')
+# sources = Glob('godot-raw-socket/*.cpp')
+sources = Split('godot-raw-socket/SocketLibrary.cpp godot-raw-socket/Socket.cpp godot-raw-socket/SocketWrapper.cpp')
 library = env.SharedLibrary(target=env['target_path'] + env['target_name'] , source=sources)
 Default(library)
 
-#sources = Split('godot-win-socket/Program.cpp godot-win-socket/WinSocket.cpp')
+#sources = Split('godot-raw-socket/Program.cpp godot-raw-socket/WinSocket.cpp')
 #program = env.Program(target=env['target_path'] + env['target_name'] , source=sources)
 #Default(program)
 

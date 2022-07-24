@@ -2,7 +2,7 @@
 
 ## Introduction
 At the time of writing 2021-08, trying to use the StreamPeerTCP class, it did 
-non manage to connect to my server, for unknown reason. It felt very bugggy
+non manage to connect to my server for unknown reason. It felt very bugggy
 so I decided to create my own plugin for low level socket communciation.
 
 This plugin is only meant to be used as a client, it does not expose any
