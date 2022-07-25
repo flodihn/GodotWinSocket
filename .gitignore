@@ -3,4 +3,5 @@
 *.pdg
 *.idb
 *.vscode
+*.vs
 .sconsign.dblite

@@ -1,0 +1,53 @@
+[gd_scene load_steps=3 format=2]
+
+[ext_resource path="res://SockTestThreaded.gd" type="Script" id=1]
+[ext_resource path="res://Socket.gdns" type="Script" id=2]
+
+[node name="SocketLibrary" type="Spatial"]
+script = ExtResource( 2 )
+
+[node name="SocketScript" type="Node" parent="."]
+script = ExtResource( 1 )
+win_socket_script = NodePath("..")
+message_input = NodePath("../CanvasLayer/VSplitContainer/Panel2/LineEdit")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="VSplitContainer" type="VSplitContainer" parent="CanvasLayer"]
+margin_right = 40.0
+margin_bottom = 40.0
+
+[node name="Panel" type="HSplitContainer" parent="CanvasLayer/VSplitContainer"]
+margin_right = 234.0
+margin_bottom = 20.0
+
+[node name="Button" type="Button" parent="CanvasLayer/VSplitContainer/Panel"]
+margin_right = 111.0
+margin_bottom = 20.0
+text = "Send Message1"
+
+[node name="Button2" type="Button" parent="CanvasLayer/VSplitContainer/Panel"]
+margin_left = 123.0
+margin_right = 234.0
+margin_bottom = 20.0
+text = "Send Message2"
+
+[node name="Panel2" type="HSplitContainer" parent="CanvasLayer/VSplitContainer"]
+margin_top = 32.0
+margin_right = 234.0
+margin_bottom = 56.0
+
+[node name="Button" type="Button" parent="CanvasLayer/VSplitContainer/Panel2"]
+margin_right = 103.0
+margin_bottom = 24.0
+text = "Send Message"
+
+[node name="LineEdit" type="LineEdit" parent="CanvasLayer/VSplitContainer/Panel2"]
+margin_left = 115.0
+margin_right = 234.0
+margin_bottom = 24.0
+text = "Test"
+
+[connection signal="pressed" from="CanvasLayer/VSplitContainer/Panel/Button" to="SocketScript" method="send_message1"]
+[connection signal="pressed" from="CanvasLayer/VSplitContainer/Panel/Button2" to="SocketScript" method="send_message2"]
+[connection signal="pressed" from="CanvasLayer/VSplitContainer/Panel2/Button" to="SocketScript" method="send_message3"]
